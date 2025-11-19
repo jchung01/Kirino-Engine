@@ -8,13 +8,15 @@ import com.google.common.base.Preconditions;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.lang.invoke.MethodHandle;
+import java.lang.invoke.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
 
 public class JobRegistry {
+    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+
     private final Map<Class<? extends IParallelJob>, Map<JobDataQuery, IJobDataInjector>> parallelJobDataQueryMap = new HashMap<>();
     private final Map<Class<? extends IParallelJob>, Map<String, IJobDataInjector>> parallelJobExternalDataQueryMap = new HashMap<>();
     private final Map<Class<? extends IParallelJob>, IJobInstantiator> parallelJobInstantiatorMap = new HashMap<>();
@@ -26,17 +28,26 @@ public class JobRegistry {
     }
 
     @NonNull
-    private <T extends IParallelJob, U> IJobDataInjector genParallelJobDataInjector(@NonNull Class<T> clazz, @NonNull String fieldName, @NonNull Class<U> fieldClass) {
+    private IJobDataInjector genParallelJobDataInjector(@NonNull Class<? extends IParallelJob> clazz, @NonNull String fieldName, @NonNull Class<?> fieldClass) {
         MethodHandle setter = ReflectionUtils.getFieldSetter(clazz, fieldName, fieldClass);
         Preconditions.checkNotNull(setter);
 
-        return (owner, value) -> {
-            try {
-                setter.invoke(owner, value);
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
-            }
-        };
+        MethodType setterType = setter.type();
+        CallSite callSite;
+        try {
+            callSite = LambdaMetafactory.metafactory(LOOKUP, "inject",
+                    MethodType.methodType(IJobDataInjector.class, MethodHandle.class),
+                    setterType.erase(),
+                    MethodHandles.exactInvoker(setterType),
+                    setterType);
+        } catch (LambdaConversionException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            return (IJobDataInjector) callSite.getTarget().invokeExact(setter);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @NonNull
@@ -44,13 +55,22 @@ public class JobRegistry {
         MethodHandle ctor = ReflectionUtils.getConstructor(clazz);
         Preconditions.checkNotNull(ctor);
 
-        return () -> {
-            try {
-                return ctor.invoke();
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
-            }
-        };
+        MethodType ctorType = ctor.type();
+        CallSite callSite;
+        try {
+            callSite = LambdaMetafactory.metafactory(LOOKUP, "instantiate",
+                    MethodType.methodType(IJobInstantiator.class, MethodHandle.class),
+                    ctorType.erase(),
+                    MethodHandles.exactInvoker(ctorType),
+                    ctorType);
+        } catch (LambdaConversionException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            return (IJobInstantiator) callSite.getTarget().invokeExact(ctor);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void registerParallelJob(Class<? extends IParallelJob> clazz) {
