@@ -26,8 +26,27 @@
   ```
 - ChunkPos
   ```java
-  public static long asLong(int x, int z)
+  public static int getX(long key)
   {
-      return (long) x & 4294967295L | ((long) z & 4294967295L) << 32;
+      return (int) (key & 0xFFFFFFFFL);
+  }
+
+  public static int getZ(long key)
+  {
+      return (int) ((key >>> 32) & 0xFFFFFFFFL);
+  }
+  ```
+- FMLClientHandler
+  ```java
+  public void beginMinecraftLoading(Minecraft minecraft, List<IResourcePack> resourcePackList, IReloadableResourceManager resourceManager, MetadataSerializer metaSerializer)
+  {
+      ...
+      com.cleanroommc.kirino.KirinoCore.init();
+  }
+  
+  public void finishMinecraftLoading()
+  {
+      ...
+      com.cleanroommc.kirino.KirinoCore.postInit();
   }
   ```

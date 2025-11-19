@@ -42,7 +42,7 @@ And the following is a walkthrough that guides you through the engine step by st
 ## 1. ECS Runtime & Kirino Engine Setup
 
 - `KirinoCore.init()` will be executed at the end of `FMLClientHandler.beginMinecraftLoading()`, which occurs at the end of the `preInit` phase.
-- `KirinoCore.postInit()` will be executed right after Forge's splash process finishes.
+- `KirinoCore.postInit()` will be executed right after Forge's splash process finishes (end of `FMLClientHandler.finishMinecraftLoading()`).
 
 During `KirinoCore.init()`, the following steps will be performed:
 - Set up `KHR_debug`
