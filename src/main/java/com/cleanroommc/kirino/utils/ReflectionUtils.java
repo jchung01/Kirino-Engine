@@ -1,23 +1,89 @@
 package com.cleanroommc.kirino.utils;
 
+import com.google.common.base.Preconditions;
+import net.minecraftforge.fml.relauncher.FMLLaunchHandler;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+/**
+ * A set of utility functions to get a {@link MethodHandle} for methods/fields/constructors.
+ * <br>
+ * Whenever possible, cache the results in a {@code static final} field. Another way to cache it is to store them in a {@code record}
+ * and store that reference in a {@code static final} field.
+ *
+ * @see <a href="https://jornvernee.github.io/methodhandles/2024/01/19/methodhandle-primer.html#method-handle-inlining">for more details about caching/inlining</a>
+ */
 public final class ReflectionUtils {
+    public static final boolean isDeobf = FMLLaunchHandler.isDeobfuscatedEnvironment();
+    // Consider using ImagineBreaker if this lookup isn't privileged enough
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+
+    /**
+     * Get a lookup allowing private access.
+     * @param clazz The class to allow private access in
+     * @return A {@link java.lang.invoke.MethodHandles.Lookup} with private access to the target class
+     */
+    private static Optional<MethodHandles.Lookup> getPrivateLookup(@NonNull Class<?> clazz) {
+        Preconditions.checkNotNull(clazz);
+
+        MethodHandles.Lookup lookup;
+        try {
+            lookup = MethodHandles.privateLookupIn(clazz, LOOKUP);
+        } catch (IllegalAccessException e) {
+            return Optional.empty();
+        }
+        return Optional.of(lookup);
+    }
+
+    /**
+     * Check if the target field is static.
+     * @param clazz The declaring class of the field
+     * @param fieldName The field name
+     * @param obfFieldName The obfuscated field name, possibly null
+     * @return An {@link Optional} containing whether the field is static, empty if the field was not found
+     */
+    private static Optional<Boolean> isStaticField(Class<?> clazz, String fieldName, @Nullable String obfFieldName) {
+        Field field = findDeclaredField(clazz, fieldName, obfFieldName);
+        if (field == null) {
+            field = findField(clazz, fieldName, obfFieldName);
+        }
+        return Optional.ofNullable(field)
+                .map(Field::getModifiers)
+                .map(Modifier::isStatic);
+    }
+
+    /**
+     * Check if the target method is static.
+     * @param clazz The declaring class of the method
+     * @param methodName The method name
+     * @param obfMethodName The obfuscated method name, possibly null
+     * @param params The method parameters
+     * @return An {@link Optional} containing whether the method is static, empty if the method was not found
+     */
+    private static Optional<Boolean> isStaticMethod(Class<?> clazz, String methodName, @Nullable String obfMethodName, Class<?>... params) {
+        Method method = findDeclaredMethod(clazz, methodName, obfMethodName, params);
+        if (method == null) {
+            method = findMethod(clazz, methodName, obfMethodName, params);
+        }
+        return Optional.ofNullable(method)
+                .map(Method::getModifiers)
+                .map(Modifier::isStatic);
+    }
 
     public static Field getFieldByNameIncludingSuperclasses(Class<?> clazz, String fieldName) throws NoSuchFieldException {
         List<Field> fields = getAllFieldsIncludingSuperclasses(clazz);
@@ -60,13 +126,17 @@ public final class ReflectionUtils {
 
     //<editor-fold desc="find field">
     @Nullable
-    public static Field findDeclaredField(Class<?> clazz, String fieldName, String obfFieldName) {
+    public static Field findDeclaredField(Class<?> clazz, String fieldName, @Nullable String obfFieldName) {
+        boolean hasObfName = obfFieldName != null && !obfFieldName.isEmpty() && !isDeobf;
         Field field = null;
         try {
-            field = clazz.getDeclaredField(fieldName);
+            field = clazz.getDeclaredField(hasObfName ? obfFieldName : fieldName);
         } catch (NoSuchFieldException e) {
             try {
-                field = clazz.getDeclaredField(obfFieldName);
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    field = clazz.getDeclaredField(fieldName);
+                }
             } catch (NoSuchFieldException ignored) {
             }
         }
@@ -75,22 +145,21 @@ public final class ReflectionUtils {
 
     @Nullable
     public static Field findDeclaredField(Class<?> clazz, String fieldName) {
-        Field field = null;
-        try {
-            field = clazz.getDeclaredField(fieldName);
-        } catch (NoSuchFieldException ignored) {
-        }
-        return field;
+        return findDeclaredField(clazz, fieldName, null);
     }
 
     @Nullable
-    public static Field findField(Class<?> clazz, String fieldName, String obfFieldName) {
+    public static Field findField(Class<?> clazz, String fieldName, @Nullable String obfFieldName) {
+        boolean hasObfName = obfFieldName != null && !obfFieldName.isEmpty() && !isDeobf;
         Field field = null;
         try {
-            field = clazz.getField(fieldName);
+            field = clazz.getField(hasObfName ? obfFieldName : fieldName);
         } catch (NoSuchFieldException e) {
             try {
-                field = clazz.getField(obfFieldName);
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    field = clazz.getField(fieldName);
+                }
             } catch (NoSuchFieldException ignored) {
             }
         }
@@ -99,12 +168,7 @@ public final class ReflectionUtils {
 
     @Nullable
     public static Field findField(Class<?> clazz, String fieldName) {
-        Field field = null;
-        try {
-            field = clazz.getField(fieldName);
-        } catch (NoSuchFieldException ignored) {
-        }
-        return field;
+       return findField(clazz, fieldName, null);
     }
     //</editor-fold>
 
@@ -196,149 +260,147 @@ public final class ReflectionUtils {
 
     //<editor-fold desc="get getter">
     /**
-     * The target field getter will be unreflected and then returned.
+     * The target field will be looked up and a getter for it will be returned.
      *
      * @param clazz The declaring class of the field
      * @param fieldName The field name
-     * @param obfFieldName The obfuscated field name
-     * @return A {@link Supplier} or {@link Function} depends on the <code>static</code> modifier
+     * @param obfFieldName The obfuscated field name, possibly null
+     * @param fieldClass The actual class of the field
+     * @return A {@link MethodHandle} representing a getter for the field
      */
     @Nullable
-    public static Object getDeclaredFieldGetter(Class<?> clazz, String fieldName, String obfFieldName) {
-        Field field = findDeclaredField(clazz, fieldName, obfFieldName);
-        if (field == null) {
+    public static MethodHandle getFieldGetter(Class<?> clazz, String fieldName, @Nullable String obfFieldName, Class<?> fieldClass) {
+        Optional<MethodHandles.Lookup> lookupResult = getPrivateLookup(clazz);
+        Preconditions.checkState(lookupResult.isPresent());
+
+        MethodHandles.Lookup lookup = lookupResult.get();
+        Optional<Boolean> isStaticResult = isStaticField(clazz, fieldName, obfFieldName);
+        // Didn't find the field
+        if (isStaticResult.isEmpty()) {
             return null;
         }
-        return unreflectGetter(field);
+        boolean isStatic = isStaticResult.get();
+
+        boolean hasObfName = obfFieldName != null && !obfFieldName.isEmpty() && !isDeobf;
+        MethodHandle handle = null;
+        try {
+            String name = hasObfName ? obfFieldName : fieldName;
+            if (isStatic) {
+                handle = lookup.findStaticGetter(clazz, name, fieldClass);
+            } else {
+                handle = lookup.findGetter(clazz, name, fieldClass);
+            }
+        } catch (NoSuchFieldException e) {
+            try {
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    if (isStatic) {
+                        handle = lookup.findStaticGetter(clazz, fieldName, fieldClass);
+                    } else {
+                        handle = lookup.findGetter(clazz, fieldName, fieldClass);
+                    }
+                }
+            } catch (NoSuchFieldException | IllegalAccessException ex) {
+                return null;
+            }
+        } catch (IllegalAccessException e) {
+            return null;
+        }
+        return handle;
     }
 
     /**
-     * The target field getter will be unreflected and then returned.
+     * The target field will be looked up and a getter for it will be returned. Non-obfuscated version.
      *
      * @param clazz The declaring class of the field
      * @param fieldName The field name
-     * @return A {@link Supplier} or {@link Function} depends on the <code>static</code> modifier
+     * @param fieldClass The actual class of the field
+     * @return A {@link MethodHandle} representing a getter for the field
      */
     @Nullable
-    public static Object getDeclaredFieldGetter(Class<?> clazz, String fieldName) {
-        Field field = findDeclaredField(clazz, fieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectGetter(field);
-    }
-
-    /**
-     * The target field getter will be unreflected and then returned.
-     *
-     * @param clazz The declaring class of the field
-     * @param fieldName The field name
-     * @param obfFieldName The obfuscated field name
-     * @return A {@link Supplier} or {@link Function} depends on the <code>static</code> modifier
-     */
-    @Nullable
-    public static Object getFieldGetter(Class<?> clazz, String fieldName, String obfFieldName) {
-        Field field = findField(clazz, fieldName, obfFieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectGetter(field);
-    }
-
-    /**
-     * The target field getter will be unreflected and then returned.
-     *
-     * @param clazz The declaring class of the field
-     * @param fieldName The field name
-     * @return A {@link Supplier} or {@link Function} depends on the <code>static</code> modifier
-     */
-    @Nullable
-    public static Object getFieldGetter(Class<?> clazz, String fieldName) {
-        Field field = findField(clazz, fieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectGetter(field);
+    public static MethodHandle getFieldGetter(Class<?> clazz, String fieldName, Class<?> fieldClass) {
+        return getFieldGetter(clazz, fieldName, null, fieldClass);
     }
     //</editor-fold>
 
     //<editor-fold desc="get setter">
     /**
-     * The target field setter will be unreflected and then returned.
+     * The target field will be looked up and a setter for it will be returned.
      *
      * @param clazz The declaring class of the field
      * @param fieldName The field name
-     * @param obfFieldName The obfuscated field name
-     * @return A {@link Consumer} or {@link BiConsumer} depends on the <code>static</code> modifier
+     * @param obfFieldName The obfuscated field name, possibly null
+     * @param fieldClass The actual class of the field
+     * @return A {@link MethodHandle} representing a setter for the field
      */
     @Nullable
-    public static Object getDeclaredFieldSetter(Class<?> clazz, String fieldName, String obfFieldName) {
-        Field field = findDeclaredField(clazz, fieldName, obfFieldName);
-        if (field == null) {
+    public static MethodHandle getFieldSetter(Class<?> clazz, String fieldName, @Nullable String obfFieldName, Class<?> fieldClass) {
+        Optional<MethodHandles.Lookup> lookupResult = getPrivateLookup(clazz);
+        Preconditions.checkState(lookupResult.isPresent());
+
+        MethodHandles.Lookup lookup = lookupResult.get();
+        Optional<Boolean> isStaticResult = isStaticField(clazz, fieldName, obfFieldName);
+        // Didn't find the field
+        if (isStaticResult.isEmpty()) {
             return null;
         }
-        return unreflectSetter(field);
+
+        boolean isStatic = isStaticResult.get();
+        boolean hasObfName = obfFieldName != null && !obfFieldName.isEmpty() && !isDeobf;
+        MethodHandle handle = null;
+        try {
+            String name = hasObfName ? obfFieldName : fieldName;
+            if (isStatic) {
+                handle = lookup.findStaticSetter(clazz, name, fieldClass);
+            } else {
+                handle = lookup.findSetter(clazz, name, fieldClass);
+            }
+        } catch (NoSuchFieldException e) {
+            try {
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    if (isStatic) {
+                        handle = lookup.findStaticSetter(clazz, fieldName, fieldClass);
+                    } else {
+                        handle = lookup.findSetter(clazz, fieldName, fieldClass);
+                    }
+                }
+            } catch (NoSuchFieldException | IllegalAccessException ex) {
+                return null;
+            }
+        } catch (IllegalAccessException e) {
+            return null;
+        }
+        return handle;
     }
 
     /**
-     * The target field setter will be unreflected and then returned.
+     * The target field will be looked up and a setter for it will be returned. Non-obfuscated version.
      *
      * @param clazz The declaring class of the field
      * @param fieldName The field name
-     * @return A {@link Consumer} or {@link BiConsumer} depends on the <code>static</code> modifier
+     * @param fieldClass The actual class of the field
+     * @return A {@link MethodHandle} representing a setter for the field
      */
     @Nullable
-    public static Object getDeclaredFieldSetter(Class<?> clazz, String fieldName) {
-        Field field = findDeclaredField(clazz, fieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectSetter(field);
-    }
-
-    /**
-     * The target field setter will be unreflected and then returned.
-     *
-     * @param clazz The declaring class of the field
-     * @param fieldName The field name
-     * @param obfFieldName The obfuscated field name
-     * @return A {@link Consumer} or {@link BiConsumer} depends on the <code>static</code> modifier
-     */
-    @Nullable
-    public static Object getFieldSetter(Class<?> clazz, String fieldName, String obfFieldName) {
-        Field field = findField(clazz, fieldName, obfFieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectSetter(field);
-    }
-
-    /**
-     * The target field setter will be unreflected and then returned.
-     *
-     * @param clazz The declaring class of the field
-     * @param fieldName The field name
-     * @return A {@link Consumer} or {@link BiConsumer} depends on the <code>static</code> modifier
-     */
-    @Nullable
-    public static Object getFieldSetter(Class<?> clazz, String fieldName) {
-        Field field = findField(clazz, fieldName);
-        if (field == null) {
-            return null;
-        }
-        return unreflectSetter(field);
+    public static MethodHandle getFieldSetter(Class<?> clazz, String fieldName, Class<?> fieldClass) {
+        return getFieldSetter(clazz, fieldName, null, fieldClass);
     }
     //</editor-fold>
 
     //<editor-fold desc="find method">
     @Nullable
-    public static Method findDeclaredMethod(Class<?> clazz, String methodName, String obfMethodName, Class<?>... params) {
+    public static Method findDeclaredMethod(Class<?> clazz, String methodName, @Nullable String obfMethodName, Class<?>... params) {
+        boolean hasObfName = obfMethodName != null && !obfMethodName.isEmpty() && !isDeobf;
         Method method = null;
         try {
-            method = clazz.getDeclaredMethod(methodName, params);
+            method = clazz.getDeclaredMethod(hasObfName ? obfMethodName : methodName, params);
         } catch (NoSuchMethodException e) {
             try {
-                method = clazz.getDeclaredMethod(obfMethodName, params);
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    method = clazz.getDeclaredMethod(methodName, params);
+                }
             } catch (NoSuchMethodException ignored) {
             }
         }
@@ -347,22 +409,21 @@ public final class ReflectionUtils {
 
     @Nullable
     public static Method findDeclaredMethod(Class<?> clazz, String methodName, Class<?>... params) {
-        Method method = null;
-        try {
-            method = clazz.getDeclaredMethod(methodName, params);
-        } catch (NoSuchMethodException ignored) {
-        }
-        return method;
+        return findDeclaredMethod(clazz, methodName, null, params);
     }
 
     @Nullable
-    public static Method findMethod(Class<?> clazz, String methodName, String obfMethodName, Class<?>... params) {
+    public static Method findMethod(Class<?> clazz, String methodName, @Nullable String obfMethodName, Class<?>... params) {
+        boolean hasObfName = obfMethodName != null && !obfMethodName.isEmpty() && !isDeobf;
         Method method = null;
         try {
-            method = clazz.getMethod(methodName, params);
+            method = clazz.getMethod(hasObfName ? obfMethodName : methodName, params);
         } catch (NoSuchMethodException e) {
             try {
-                method = clazz.getMethod(obfMethodName, params);
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    method = clazz.getMethod(methodName, params);
+                }
             } catch (NoSuchMethodException ignored) {
             }
         }
@@ -371,122 +432,87 @@ public final class ReflectionUtils {
 
     @Nullable
     public static Method findMethod(Class<?> clazz, String methodName, Class<?>... params) {
-        Method method = null;
-        try {
-            method = clazz.getMethod(methodName, params);
-        } catch (NoSuchMethodException ignored) {
-        }
-        return method;
+        return findMethod(clazz, methodName, null, params);
     }
     //</editor-fold>
 
     //<editor-fold desc="get method handle">
+    /**
+     * The target method will be looked up and returned.
+     * <br><br>
+     * This method does not find any method outlined by {@link java.lang.invoke.MethodHandles.Lookup#findSpecial(Class, String, MethodType, Class)}.
+     *
+     * @param clazz The declaring class of the method
+     * @param methodName The method name
+     * @param obfMethodName The obfuscated method name, possibly null
+     * @param returnClass The class of the return value of the method
+     * @param params The class(es) of the parameters of the method
+     * @return A {@link MethodHandle} representing the method
+     */
     @Nullable
-    public static MethodHandle getDeclaredMethod(Class<?> clazz, String methodName, String obfMethodName, Class<?>... params) {
-        Method method = findDeclaredMethod(clazz, methodName, obfMethodName, params);
-        if (method == null) {
+    public static MethodHandle getMethod(Class<?> clazz, String methodName, @Nullable String obfMethodName,
+                                         Class<?> returnClass, Class<?>... params) {
+        Optional<MethodHandles.Lookup> lookupResult = getPrivateLookup(clazz);
+        Preconditions.checkState(lookupResult.isPresent());
+
+        MethodHandles.Lookup lookup = lookupResult.get();
+        Optional<Boolean> isStaticResult = isStaticMethod(clazz, methodName, obfMethodName, params);
+        // Didn't find the method
+        if (isStaticResult.isEmpty()) {
             return null;
         }
-        method.setAccessible(true);
+        boolean isStatic = isStaticResult.get();
+
+        MethodType methodType = MethodType.methodType(returnClass, params);
+        boolean hasObfName = obfMethodName != null && !obfMethodName.isEmpty() && !isDeobf;
+        MethodHandle handle = null;
         try {
-            return LOOKUP.unreflect(method);
+            String name = hasObfName ? obfMethodName : methodName;
+            if (isStatic) {
+                handle = lookup.findStatic(clazz, name, methodType);
+            } else {
+                handle = lookup.findVirtual(clazz, name, methodType);
+            }
+        } catch (NoSuchMethodException e) {
+            try {
+                // Tried obf name, now try deobf name
+                if (hasObfName) {
+                    if (isStatic) {
+                        handle = lookup.findStatic(clazz, methodName, methodType);
+                    } else {
+                        handle = lookup.findVirtual(clazz, methodName, methodType);
+                    }
+                }
+            } catch (NoSuchMethodException | IllegalAccessException ex) {
+                return null;
+            }
         } catch (IllegalAccessException e) {
             return null;
         }
+        return handle;
     }
 
     @Nullable
-    public static MethodHandle getDeclaredMethod(Class<?> clazz, String methodName, Class<?>... params) {
-        Method method = findDeclaredMethod(clazz, methodName, params);
-        if (method == null) {
-            return null;
-        }
-        method.setAccessible(true);
-        try {
-            return LOOKUP.unreflect(method);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
-
-    @Nullable
-    public static MethodHandle getMethod(Class<?> clazz, String methodName, String obfMethodName, Class<?>... params) {
-        Method method = findMethod(clazz, methodName, obfMethodName, params);
-        if (method == null) {
-            return null;
-        }
-        method.setAccessible(true);
-        try {
-            return LOOKUP.unreflect(method);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
-
-    @Nullable
-    public static MethodHandle getMethod(Class<?> clazz, String methodName, Class<?>... params) {
-        Method method = findMethod(clazz, methodName, params);
-        if (method == null) {
-            return null;
-        }
-        method.setAccessible(true);
-        try {
-            return LOOKUP.unreflect(method);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
-    //</editor-fold>
-
-    //<editor-fold desc="find constructor">
-    @Nullable
-    public static <T> Constructor<T> findDeclaredConstructor(Class<T> clazz, Class<?>... params) {
-        Constructor<T> ctor = null;
-        try {
-            ctor = clazz.getDeclaredConstructor(params);
-        } catch (NoSuchMethodException ignored) {
-        }
-        return ctor;
-    }
-
-    @Nullable
-    public static <T> Constructor<T> findConstructor(Class<T> clazz, Class<?>... params) {
-        Constructor<T> ctor = null;
-        try {
-            ctor = clazz.getConstructor(params);
-        } catch (NoSuchMethodException ignored) {
-        }
-        return ctor;
+    public static MethodHandle getMethod(Class<?> clazz, String methodName,
+                                         Class<?> returnClass, Class<?>... params) {
+        return getMethod(clazz, methodName, null, returnClass, params);
     }
     //</editor-fold>
 
     //<editor-fold desc="get constructor handle">
     @Nullable
-    public static MethodHandle getDeclaredConstructor(Class<?> clazz, Class<?>... params) {
-        Constructor<?> ctor = findDeclaredConstructor(clazz, params);
-        if (ctor == null) {
-            return null;
-        }
-        ctor.setAccessible(true);
-        try {
-            return LOOKUP.unreflectConstructor(ctor);
-        } catch (IllegalAccessException e) {
-            return null;
-        }
-    }
-
-    @Nullable
     public static MethodHandle getConstructor(Class<?> clazz, Class<?>... params) {
-        Constructor<?> ctor = findConstructor(clazz, params);
-        if (ctor == null) {
-            return null;
-        }
-        ctor.setAccessible(true);
+        Optional<MethodHandles.Lookup> lookupResult = getPrivateLookup(clazz);
+        Preconditions.checkState(lookupResult.isPresent());
+
+        MethodHandles.Lookup lookup = lookupResult.get();
+        MethodHandle handle = null;
         try {
-            return LOOKUP.unreflectConstructor(ctor);
-        } catch (IllegalAccessException e) {
+            handle = lookup.findConstructor(clazz, MethodType.methodType(void.class, params));
+        } catch (NoSuchMethodException | IllegalAccessException e) {
             return null;
         }
+        return handle;
     }
     //</editor-fold>
 }

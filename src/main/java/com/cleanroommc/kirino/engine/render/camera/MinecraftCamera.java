@@ -7,21 +7,20 @@ import net.minecraft.entity.Entity;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import java.lang.invoke.MethodHandle;
 import java.nio.FloatBuffer;
 import java.util.Objects;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class MinecraftCamera implements ICamera {
-    private final Supplier<FloatBuffer> projectionBuffer;
-    private final Supplier<FloatBuffer> viewRotationBuffer;
-    private final Function<Minecraft, Float> partialTicksPaused;
+    private final MethodHandle projectionBuffer;
+    private final MethodHandle viewRotationBuffer;
+    private final MethodHandle partialTicksPaused;
 
     @SuppressWarnings("unchecked")
     public MinecraftCamera() {
-        projectionBuffer = (Supplier<FloatBuffer>) ReflectionUtils.getDeclaredFieldGetter(ActiveRenderInfo.class, "PROJECTION", "field_178813_c");
-        viewRotationBuffer = (Supplier<FloatBuffer>) ReflectionUtils.getDeclaredFieldGetter(ActiveRenderInfo.class, "MODELVIEW", "field_178812_b");
-        partialTicksPaused = (Function<Minecraft, Float>) ReflectionUtils.getDeclaredFieldGetter(Minecraft.class, "renderPartialTicksPaused", "field_193996_ah");
+        projectionBuffer = ReflectionUtils.getFieldGetter(ActiveRenderInfo.class, "PROJECTION", "field_178813_c", FloatBuffer.class);
+        viewRotationBuffer = ReflectionUtils.getFieldGetter(ActiveRenderInfo.class, "MODELVIEW", "field_178812_b", FloatBuffer.class);
+        partialTicksPaused = ReflectionUtils.getFieldGetter(Minecraft.class, "renderPartialTicksPaused", "field_193996_ah", float.class);
 
         Objects.requireNonNull(projectionBuffer);
         Objects.requireNonNull(viewRotationBuffer);
@@ -30,27 +29,47 @@ public class MinecraftCamera implements ICamera {
 
     public double getPartialTicks() {
         Minecraft minecraft = Minecraft.getMinecraft();
-        return minecraft.isGamePaused() ? partialTicksPaused.apply(minecraft) : minecraft.getRenderPartialTicks();
+        try {
+            return minecraft.isGamePaused() ? (float) partialTicksPaused.invokeExact(minecraft) : minecraft.getRenderPartialTicks();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public Matrix4f getProjectionMatrix() {
-        return new Matrix4f(projectionBuffer.get());
+        try {
+            return new Matrix4f((FloatBuffer) projectionBuffer.invokeExact());
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public FloatBuffer getProjectionBuffer() {
-        return projectionBuffer.get();
+        try {
+            return (FloatBuffer) projectionBuffer.invokeExact();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public Matrix4f getViewRotationMatrix() {
-        return new Matrix4f(viewRotationBuffer.get());
+        try {
+            return new Matrix4f((FloatBuffer) viewRotationBuffer.invokeExact());
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public FloatBuffer getViewRotationBuffer() {
-        return viewRotationBuffer.get();
+        try {
+            return (FloatBuffer) viewRotationBuffer.invokeExact();
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

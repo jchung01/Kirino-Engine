@@ -17,17 +17,16 @@ import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.RayTraceResult;
 
+import java.lang.invoke.MethodHandle;
 import java.util.Map;
-import java.util.function.Function;
 
 public class MinecraftTESRRendering {
     private final MinecraftCulling cullingPatch;
-    private final Function<RenderGlobal, Map<Integer, DestroyBlockProgress>> damagedBlocks;
+    private final MethodHandle damagedBlocks;
 
-    @SuppressWarnings("unchecked")
     public MinecraftTESRRendering(MinecraftCulling cullingPatch) {
         this.cullingPatch = cullingPatch;
-        damagedBlocks = (Function<RenderGlobal, Map<Integer, DestroyBlockProgress>>) ReflectionUtils.getDeclaredFieldGetter(RenderGlobal.class, "damagedBlocks", "field_72738_E");
+        damagedBlocks = ReflectionUtils.getFieldGetter(RenderGlobal.class, "damagedBlocks", "field_72738_E", Map.class);
 
         Preconditions.checkNotNull(damagedBlocks);
     }
@@ -104,28 +103,33 @@ public class MinecraftTESRRendering {
 
         preRenderDamagedBlocks();
 
-        for (DestroyBlockProgress destroyBlockProgress : damagedBlocks.apply(renderGlobal).values()) {
-            BlockPos blockPos = destroyBlockProgress.getPosition();
+        try {
+            //noinspection unchecked
+            for (DestroyBlockProgress destroyBlockProgress : ((Map<Integer, DestroyBlockProgress>) damagedBlocks.invokeExact(renderGlobal)).values()) {
+                BlockPos blockPos = destroyBlockProgress.getPosition();
 
-            if (world.getBlockState(blockPos).getBlock().hasTileEntity()) {
-                TileEntity tileEntity = world.getTileEntity(blockPos);
+                if (world.getBlockState(blockPos).getBlock().hasTileEntity()) {
+                    TileEntity tileEntity = world.getTileEntity(blockPos);
 
-                if (tileEntity instanceof TileEntityChest chest) {
-                    if (chest.adjacentChestXNeg != null) {
-                        blockPos = blockPos.offset(EnumFacing.WEST);
-                        tileEntity = world.getTileEntity(blockPos);
-                    } else if (chest.adjacentChestZNeg != null) {
-                        blockPos = blockPos.offset(EnumFacing.NORTH);
-                        tileEntity = world.getTileEntity(blockPos);
+                    if (tileEntity instanceof TileEntityChest chest) {
+                        if (chest.adjacentChestXNeg != null) {
+                            blockPos = blockPos.offset(EnumFacing.WEST);
+                            tileEntity = world.getTileEntity(blockPos);
+                        } else if (chest.adjacentChestZNeg != null) {
+                            blockPos = blockPos.offset(EnumFacing.NORTH);
+                            tileEntity = world.getTileEntity(blockPos);
+                        }
+                    }
+
+                    IBlockState blockState = world.getBlockState(blockPos);
+
+                    if (tileEntity != null && blockState.hasCustomBreakingProgress()) {
+                        TileEntityRendererDispatcher.instance.render(tileEntity, partialTicks, destroyBlockProgress.getPartialBlockDamage());
                     }
                 }
-
-                IBlockState blockState = world.getBlockState(blockPos);
-
-                if (tileEntity != null && blockState.hasCustomBreakingProgress()) {
-                    TileEntityRendererDispatcher.instance.render(tileEntity, partialTicks, destroyBlockProgress.getPartialBlockDamage());
-                }
             }
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
         }
 
         postRenderDamagedBlocks();

@@ -22,8 +22,8 @@ public class ShaderRegistry {
     private final MethodHandle shaderProgramCtor;
 
     public ShaderRegistry() {
-        shaderCtor = ReflectionUtils.getDeclaredConstructor(Shader.class, String.class, String.class, ShaderType.class);
-        shaderProgramCtor = ReflectionUtils.getDeclaredConstructor(ShaderProgram.class, Shader[].class);
+        shaderCtor = ReflectionUtils.getConstructor(Shader.class, String.class, String.class, ShaderType.class);
+        shaderProgramCtor = ReflectionUtils.getConstructor(ShaderProgram.class, Shader[].class);
 
         Objects.requireNonNull(shaderCtor);
         Objects.requireNonNull(shaderProgramCtor);

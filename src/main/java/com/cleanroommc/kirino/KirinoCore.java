@@ -6,8 +6,8 @@ import com.cleanroommc.kirino.ecs.component.scan.event.StructScanningEvent;
 import com.cleanroommc.kirino.ecs.job.event.JobRegistrationEvent;
 import com.cleanroommc.kirino.engine.KirinoEngine;
 import com.cleanroommc.kirino.engine.render.pipeline.post.event.PostProcessingRegistrationEvent;
-import com.cleanroommc.kirino.engine.render.task.job.ChunkMeshletGenJob;
 import com.cleanroommc.kirino.engine.render.shader.event.ShaderRegistrationEvent;
+import com.cleanroommc.kirino.engine.render.task.job.ChunkMeshletGenJob;
 import com.cleanroommc.kirino.gl.GLTest;
 import com.cleanroommc.kirino.gl.debug.*;
 import com.cleanroommc.kirino.utils.ReflectionUtils;
@@ -41,7 +41,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 
 public final class KirinoCore {
     private static final Minecraft MINECRAFT = Minecraft.getMinecraft();
@@ -99,9 +98,33 @@ public final class KirinoCore {
     private static MethodHandle updateLightmap;
     private static MethodHandle renderRainSnow;
     private static MethodHandle renderHand;
-    private static Function<EntityRenderer, Float> farPlaneDistance;
-    private static Function<EntityRenderer, Boolean> debugView;
-    private static Function<EntityRenderer, Boolean> isRenderHand;
+    private static MethodHandle farPlaneDistance;
+    private static MethodHandle debugView;
+    private static MethodHandle isRenderHand;
+
+    private static float getFarPlaneDistance(EntityRenderer instance) {
+        try {
+            return (float) farPlaneDistance.invokeExact(instance);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static boolean isDebugView(EntityRenderer instance) {
+        try {
+            return (boolean) debugView.invokeExact(instance);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static boolean isRenderHand(EntityRenderer instance) {
+        try {
+            return (boolean) isRenderHand.invokeExact(instance);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     /**
      * This method is a direct replacement of {@link net.minecraft.client.renderer.EntityRenderer#renderWorld(float, long)}.
@@ -134,7 +157,7 @@ public final class KirinoCore {
         KIRINO_ENGINE.renderingCoordinator.camera.getViewRotationBuffer().clear();
         float partialTicks = (float) KIRINO_ENGINE.renderingCoordinator.camera.getPartialTicks();
         try {
-            updateLightmap.invoke(MINECRAFT.entityRenderer, partialTicks);
+            updateLightmap.invokeExact(MINECRAFT.entityRenderer, partialTicks);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -151,7 +174,7 @@ public final class KirinoCore {
         // note: update fog color; bottom part of the sky
         MINECRAFT.profiler.startSection("clear");
         try {
-            updateFogColor.invoke(MINECRAFT.entityRenderer, partialTicks);
+            updateFogColor.invokeExact(MINECRAFT.entityRenderer, partialTicks);
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         } catch (Throwable e) {
             throw new RuntimeException(e);
@@ -160,7 +183,7 @@ public final class KirinoCore {
         // ========== camera ==========
         MINECRAFT.profiler.endStartSection("camera");
         try {
-            setupCameraTransform.invoke(MINECRAFT.entityRenderer, partialTicks, 2);
+            setupCameraTransform.invokeExact(MINECRAFT.entityRenderer, partialTicks, 2);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -184,7 +207,7 @@ public final class KirinoCore {
         // note: sun and moon etc.
         if (MINECRAFT.gameSettings.renderDistanceChunks >= 4) {
             try {
-                setupFog.invoke(MINECRAFT.entityRenderer, -1, partialTicks);
+                setupFog.invokeExact(MINECRAFT.entityRenderer, -1, partialTicks);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
@@ -192,29 +215,29 @@ public final class KirinoCore {
             GlStateManager.loadIdentity();
             float fovModifier = 0f;
             try {
-                fovModifier = (float) getFOVModifier.invoke(MINECRAFT.entityRenderer, partialTicks, true);
+                fovModifier = (float) getFOVModifier.invokeExact(MINECRAFT.entityRenderer, partialTicks, true);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
-            Project.gluPerspective(fovModifier, (float) MINECRAFT.displayWidth / (float) MINECRAFT.displayHeight, 0.05F, farPlaneDistance.apply(MINECRAFT.entityRenderer) * 2.0F);
+            Project.gluPerspective(fovModifier, (float) MINECRAFT.displayWidth / (float) MINECRAFT.displayHeight, 0.05F, getFarPlaneDistance(MINECRAFT.entityRenderer) * 2.0F);
             GlStateManager.matrixMode(5888);
             MINECRAFT.renderGlobal.renderSky(partialTicks, 2);
             GlStateManager.matrixMode(5889);
             GlStateManager.loadIdentity();
-            Project.gluPerspective(fovModifier, (float) MINECRAFT.displayWidth / (float) MINECRAFT.displayHeight, 0.05F, farPlaneDistance.apply(MINECRAFT.entityRenderer) * MathHelper.SQRT_2);
+            Project.gluPerspective(fovModifier, (float) MINECRAFT.displayWidth / (float) MINECRAFT.displayHeight, 0.05F, getFarPlaneDistance(MINECRAFT.entityRenderer) * MathHelper.SQRT_2);
             GlStateManager.matrixMode(5888);
         }
 
         // note: cloud
         try {
-            setupFog.invoke(MINECRAFT.entityRenderer, 0, partialTicks);
+            setupFog.invokeExact(MINECRAFT.entityRenderer, 0, partialTicks);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
         GlStateManager.shadeModel(7425);
         if (MINECRAFT.getRenderViewEntity().posY + (double) MINECRAFT.getRenderViewEntity().getEyeHeight() < 128.0D) {
             try {
-                renderCloudsCheck.invoke(MINECRAFT.entityRenderer, MINECRAFT.renderGlobal, partialTicks, 2, d0, d1, d2);
+                renderCloudsCheck.invokeExact(MINECRAFT.entityRenderer, MINECRAFT.renderGlobal, partialTicks, 2, d0, d1, d2);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
@@ -237,7 +260,7 @@ public final class KirinoCore {
 
         boolean flag = false;
         try {
-            flag = (boolean) isDrawBlockOutline.invoke(MINECRAFT.entityRenderer);
+            flag = (boolean) isDrawBlockOutline.invokeExact(MINECRAFT.entityRenderer);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -248,7 +271,7 @@ public final class KirinoCore {
         GlStateManager.enableAlpha();
         GlStateManager.alphaFunc(516, 0.1F);
         // note: default value of debugView == false
-        if (!debugView.apply(MINECRAFT.entityRenderer)) {
+        if (!isDebugView(MINECRAFT.entityRenderer)) {
             GlStateManager.matrixMode(5888);
             GlStateManager.pushMatrix();
             RenderHelper.enableStandardItemLighting();
@@ -311,14 +334,14 @@ public final class KirinoCore {
         MINECRAFT.profiler.endSection();
 
         // note: default value of debugView == false
-        if (!debugView.apply(MINECRAFT.entityRenderer)) {
+        if (!isDebugView(MINECRAFT.entityRenderer)) {
             // ========== litParticles ==========
             MINECRAFT.profiler.startSection("litParticles");
             MINECRAFT.entityRenderer.enableLightmap();
             MINECRAFT.effectRenderer.renderLitParticles(renderViewEntity, partialTicks);
             RenderHelper.disableStandardItemLighting();
             try {
-                setupFog.invoke(MINECRAFT.entityRenderer, 0, partialTicks);
+                setupFog.invokeExact(MINECRAFT.entityRenderer, 0, partialTicks);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
@@ -336,7 +359,7 @@ public final class KirinoCore {
         GlStateManager.depthMask(false);
         GlStateManager.enableCull();
         try {
-            renderRainSnow.invoke(MINECRAFT.entityRenderer, partialTicks);
+            renderRainSnow.invokeExact(MINECRAFT.entityRenderer, partialTicks);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -347,7 +370,7 @@ public final class KirinoCore {
         GlStateManager.tryBlendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
         GlStateManager.alphaFunc(516, 0.1F);
         try {
-            setupFog.invoke(MINECRAFT.entityRenderer, 0, partialTicks);
+            setupFog.invokeExact(MINECRAFT.entityRenderer, 0, partialTicks);
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
@@ -366,7 +389,7 @@ public final class KirinoCore {
         // ========== entities ==========
         MINECRAFT.profiler.startSection("entities");
         // note: default value of debugView == false
-        if (!debugView.apply(MINECRAFT.entityRenderer)) {
+        if (!isDebugView(MINECRAFT.entityRenderer)) {
             RenderHelper.enableStandardItemLighting();
             ForgeHooksClient.setRenderPass(1);
             KIRINO_ENGINE.renderingCoordinator.entityRenderingPatch.renderEntities(
@@ -406,7 +429,7 @@ public final class KirinoCore {
         MINECRAFT.profiler.endStartSection("aboveClouds");
         if (renderViewEntity.posY + (double) renderViewEntity.getEyeHeight() >= 128.0D) {
             try {
-                renderCloudsCheck.invoke(MINECRAFT.entityRenderer, MINECRAFT.renderGlobal, partialTicks, 2, d0, d1, d2);
+                renderCloudsCheck.invokeExact(MINECRAFT.entityRenderer, MINECRAFT.renderGlobal, partialTicks, 2, d0, d1, d2);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
@@ -418,10 +441,10 @@ public final class KirinoCore {
 
         // ========== hand ==========
         MINECRAFT.profiler.endStartSection("hand");
-        if (isRenderHand.apply(MINECRAFT.entityRenderer)) {
+        if (isRenderHand(MINECRAFT.entityRenderer)) {
             GlStateManager.clear(256);
             try {
-                renderHand.invoke(MINECRAFT.entityRenderer, partialTicks, 2);
+                renderHand.invokeExact(MINECRAFT.entityRenderer, partialTicks, 2);
             } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
@@ -544,18 +567,18 @@ public final class KirinoCore {
         //</editor-fold>
 
         //<editor-fold desc="reflection">
-        setupCameraTransform = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "setupCameraTransform", "func_78479_a(FI)V", float.class, int.class);
-        updateFogColor = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "updateFogColor", "func_78466_h(F)V", float.class);
-        setupFog = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "setupFog", "func_78468_a(IF)V", int.class, float.class);
-        getFOVModifier = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "getFOVModifier", "func_78481_a(FZ)F", float.class, boolean.class);
-        renderCloudsCheck = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "renderCloudsCheck", "func_180437_a(Lnet/minecraft/client/renderer/RenderGlobal;FIDDD)V", RenderGlobal.class, float.class, int.class, double.class, double.class, double.class);
-        isDrawBlockOutline = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "isDrawBlockOutline", "func_175070_n()Z");
-        updateLightmap = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "updateLightmap", "func_78472_g(F)V", float.class);
-        renderRainSnow = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "renderRainSnow", "func_78474_d(F)V", float.class);
-        renderHand = ReflectionUtils.getDeclaredMethod(EntityRenderer.class, "renderHand", "func_78476_b(FI)V", float.class, int.class);
-        farPlaneDistance = (Function<EntityRenderer, Float>) ReflectionUtils.getDeclaredFieldGetter(EntityRenderer.class, "farPlaneDistance", "field_78530_s");
-        debugView = (Function<EntityRenderer, Boolean>) ReflectionUtils.getDeclaredFieldGetter(EntityRenderer.class, "debugView", "field_175078_W");
-        isRenderHand = (Function<EntityRenderer, Boolean>) ReflectionUtils.getDeclaredFieldGetter(EntityRenderer.class, "renderHand", "field_175074_C");
+        setupCameraTransform = ReflectionUtils.getMethod(EntityRenderer.class, "setupCameraTransform", "func_78479_a(FI)V", void.class, float.class, int.class);
+        updateFogColor = ReflectionUtils.getMethod(EntityRenderer.class, "updateFogColor", "func_78466_h(F)V", void.class, float.class);
+        setupFog = ReflectionUtils.getMethod(EntityRenderer.class, "setupFog", "func_78468_a(IF)V", void.class, int.class, float.class);
+        getFOVModifier = ReflectionUtils.getMethod(EntityRenderer.class, "getFOVModifier", "func_78481_a(FZ)F", float.class, float.class, boolean.class);
+        renderCloudsCheck = ReflectionUtils.getMethod(EntityRenderer.class, "renderCloudsCheck", "func_180437_a(Lnet/minecraft/client/renderer/RenderGlobal;FIDDD)V", void.class, RenderGlobal.class, float.class, int.class, double.class, double.class, double.class);
+        isDrawBlockOutline = ReflectionUtils.getMethod(EntityRenderer.class, "isDrawBlockOutline", "func_175070_n()Z", boolean.class);
+        updateLightmap = ReflectionUtils.getMethod(EntityRenderer.class, "updateLightmap", "func_78472_g(F)V", void.class, float.class);
+        renderRainSnow = ReflectionUtils.getMethod(EntityRenderer.class, "renderRainSnow", "func_78474_d(F)V", void.class, float.class);
+        renderHand = ReflectionUtils.getMethod(EntityRenderer.class, "renderHand", "func_78476_b(FI)V", void.class, float.class, int.class);
+        farPlaneDistance = ReflectionUtils.getFieldGetter(EntityRenderer.class, "farPlaneDistance", "field_78530_s", float.class);
+        debugView = ReflectionUtils.getFieldGetter(EntityRenderer.class, "debugView", "field_175078_W", boolean.class);
+        isRenderHand = ReflectionUtils.getFieldGetter(EntityRenderer.class, "renderHand", "field_175074_C", boolean.class);
 
         Preconditions.checkNotNull(setupCameraTransform);
         Preconditions.checkNotNull(updateFogColor);

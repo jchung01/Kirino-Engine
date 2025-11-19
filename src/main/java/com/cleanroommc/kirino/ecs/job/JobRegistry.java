@@ -13,8 +13,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.function.BiConsumer;
 
 public class JobRegistry {
     private final Map<Class<? extends IParallelJob>, Map<JobDataQuery, IJobDataInjector>> parallelJobDataQueryMap = new HashMap<>();
@@ -27,14 +25,17 @@ public class JobRegistry {
         this.componentRegistry = componentRegistry;
     }
 
-    @SuppressWarnings({"unchecked"})
     @NonNull
     private <T extends IParallelJob, U> IJobDataInjector genParallelJobDataInjector(@NonNull Class<T> clazz, @NonNull String fieldName, @NonNull Class<U> fieldClass) {
-        BiConsumer<T, U> setter = (BiConsumer<T, U>) ReflectionUtils.getFieldSetter(clazz, fieldName);
+        MethodHandle setter = ReflectionUtils.getFieldSetter(clazz, fieldName, fieldClass);
         Preconditions.checkNotNull(setter);
 
         return (owner, value) -> {
-            setter.accept((T) owner, (U) value);
+            try {
+                setter.invoke(owner, value);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
         };
     }
 
