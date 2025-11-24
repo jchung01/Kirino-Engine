@@ -23,7 +23,10 @@ public class JobScheduler {
         this.jobRegistry = jobRegistry;
     }
 
-    public CompletableFuture<?> executeParallelJob(EntityManager entityManager, Class<? extends IParallelJob> clazz, @Nullable Map<String, Object> externalData, Executor executor) {
+    public record ExecutionHandle(CompletableFuture<?> future, int totalThreadCount, boolean async) {
+    }
+
+    public ExecutionHandle executeParallelJob(EntityManager entityManager, Class<? extends IParallelJob> clazz, @Nullable Map<String, Object> externalData, Executor executor) {
         Map<JobDataQuery, IJobDataInjector> parallelJobDataQueries = jobRegistry.getParallelJobDataQueries(clazz);
         Map<String, IJobDataInjector> parallelJobExternalDataQueries = jobRegistry.getParallelJobExternalDataQueries(clazz);
         IJobInstantiator instantiator = jobRegistry.getParallelJobInstantiator(clazz);
@@ -48,18 +51,7 @@ public class JobScheduler {
 
         int threadOrdinal = 0;
         for (ArchetypeDataPool archetype : archetypes) {
-            IParallelJob job = (IParallelJob) instantiator.instantiate();
-
-            // data injection
-            for (Map.Entry<JobDataQuery, IJobDataInjector> entry : parallelJobDataQueries.entrySet()) {
-                IPrimitiveArray array = archetype.getArray(entry.getKey().componentClass().asSubclass(ICleanComponent.class), entry.getKey().fieldAccessChain());
-                entry.getValue().inject(job, array);
-            }
-            if (externalData != null) {
-                for (Map.Entry<String, IJobDataInjector> entry : parallelJobExternalDataQueries.entrySet()) {
-                    entry.getValue().inject(job, externalData.get(entry.getKey()));
-                }
-            }
+            IParallelJob job = newParallelJob(instantiator, parallelJobDataQueries, parallelJobExternalDataQueries, archetype, externalData);
 
             ArrayRange arrayRange = archetype.getArrayRange();
 
@@ -69,10 +61,21 @@ public class JobScheduler {
                     continue;
                 }
 
-                workload += job.estimateWorkload(i);
+                int jobWorkload = job.estimateWorkload(i);
+                Preconditions.checkState(jobWorkload >= 1,
+                        "The estimated workload at index=%d must be greater than or equal to 1. (Parallel job class: %s)",
+                        i, clazz.getName());
+
+                workload += jobWorkload;
             }
 
-            int futureCount = (workload + KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread - 1) / KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread;
+            // future count
+            int targetWorkloadPerThread = KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread;
+            int futureCount = Math.ceilDivExact(workload, targetWorkloadPerThread);
+            if (futureCount > Runtime.getRuntime().availableProcessors()) {
+                futureCount = Runtime.getRuntime().availableProcessors();
+                targetWorkloadPerThread = workload / futureCount;
+            }
 
             if (futureCount <= 1) {
                 // run synchronously
@@ -96,10 +99,12 @@ public class JobScheduler {
 
                     accumulated += job.estimateWorkload(i);
 
-                    if (accumulated >= KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread) {
+                    if (accumulated >= targetWorkloadPerThread) {
                         final int endIndexExclusive = i + 1;
                         final int finalThreadOrdinal = threadOrdinal;
                         final int finalStartIndex = startIndex;
+
+                        final IParallelJob jobPerThread = newParallelJob(instantiator, parallelJobDataQueries, parallelJobExternalDataQueries, archetype, externalData);
 
                         futures.add(CompletableFuture.runAsync(() -> {
                             for (int j = finalStartIndex; j < endIndexExclusive; j++) {
@@ -107,7 +112,7 @@ public class JobScheduler {
                                     continue;
                                 }
 
-                                job.execute(entityManager, j, finalThreadOrdinal);
+                                jobPerThread.execute(entityManager, j, finalThreadOrdinal);
                             }
                         }, executor));
 
@@ -129,13 +134,15 @@ public class JobScheduler {
                     final int finalThreadOrdinal = threadOrdinal;
                     final int finalStartIndex = startIndex;
 
+                    final IParallelJob jobPerThread = newParallelJob(instantiator, parallelJobDataQueries, parallelJobExternalDataQueries, archetype, externalData);
+
                     futures.add(CompletableFuture.runAsync(() -> {
                         for (int j = finalStartIndex; j < arrayRange.end; j++) {
                             if (arrayRange.deprecatedIndexes.contains(j)) {
                                 continue;
                             }
 
-                            job.execute(entityManager, j, finalThreadOrdinal);
+                            jobPerThread.execute(entityManager, j, finalThreadOrdinal);
                         }
                     }, executor));
 
@@ -145,11 +152,34 @@ public class JobScheduler {
         }
 
         if (futures.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
+            return new ExecutionHandle(CompletableFuture.completedFuture(null), threadOrdinal, false);
         } else if (futures.size() == 1) {
-            return futures.getFirst();
+            return new ExecutionHandle(futures.getFirst(), threadOrdinal, true);
         } else {
-            return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+            return new ExecutionHandle(CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])), threadOrdinal, true);
         }
+    }
+
+    private IParallelJob newParallelJob(
+            IJobInstantiator instantiator,
+            Map<JobDataQuery, IJobDataInjector> parallelJobDataQueries,
+            Map<String, IJobDataInjector> parallelJobExternalDataQueries,
+            ArchetypeDataPool archetype,
+            @Nullable Map<String, Object> externalData) {
+
+        IParallelJob job = (IParallelJob) instantiator.instantiate();
+
+        // data injection
+        for (Map.Entry<JobDataQuery, IJobDataInjector> entry : parallelJobDataQueries.entrySet()) {
+            IPrimitiveArray array = archetype.getArray(entry.getKey().componentClass().asSubclass(ICleanComponent.class), entry.getKey().fieldAccessChain());
+            entry.getValue().inject(job, array);
+        }
+        if (externalData != null) {
+            for (Map.Entry<String, IJobDataInjector> entry : parallelJobExternalDataQueries.entrySet()) {
+                entry.getValue().inject(job, externalData.get(entry.getKey()));
+            }
+        }
+
+        return job;
     }
 }

@@ -5,14 +5,16 @@ import com.cleanroommc.kirino.ecs.entity.EntityQuery;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Jobs will be instantiated per archetype.
+ * Jobs will be instantiated per thread.
  */
 public interface IParallelJob {
     /**
-     * Every execution must be stateless except the index.
+     * Every execution should be stateless except the index.
+     * You can introduce state-dependent logic if two executions share the same <code>threadOrdinal</code>.
      *
      * @param entityManager The entity manager
      * @param index The index
+     * @param threadOrdinal The ordinal number of the current thread
      */
     void execute(@NonNull EntityManager entityManager, int index, int threadOrdinal);
 

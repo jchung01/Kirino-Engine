@@ -23,6 +23,9 @@ public class ChunkMeshletGenSystem extends CleanSystem {
 
     @Override
     public void update(@NonNull EntityManager entityManager, @NonNull JobScheduler jobScheduler) {
-        jobScheduler.executeParallelJob(entityManager, ChunkMeshletGenJob.class, externalData, ForkJoinPool.commonPool()).join();
+        JobScheduler.ExecutionHandle handle = jobScheduler.executeParallelJob(entityManager, ChunkMeshletGenJob.class, externalData, ForkJoinPool.commonPool());
+        if (handle.async()) {
+            handle.future().join();
+        }
     }
 }
