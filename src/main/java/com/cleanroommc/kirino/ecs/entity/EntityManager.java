@@ -210,12 +210,13 @@ public class EntityManager {
      * </ul>
      * </br>
      * This method will allocate an entity handle and generate a command for all side effects.
-     * Buffered commands will be consumed at {@link #flush()}.
+     * Buffered commands will be consumed at {@link #flush()}, and the destroy callback will be executed during {@link #flush()}.
      * </br></br>
      * Thread safety is guaranteed.
      *
      * @see #flush()
      *
+     * @param destroyCallback The entity destroy callback
      * @param components The component types this entity has
      * @return An entity handle
      */
@@ -275,7 +276,7 @@ public class EntityManager {
 
     /**
      * This method will destroy an entity and generate a command for all side effects.
-     * Buffered commands will be consumed at {@link #flush()}, so the destroy callback will be executed during {@link #flush()}.
+     * Buffered commands will be consumed at {@link #flush()}, and the destroy callback will be executed during {@link #flush()}.
      * </br></br>
      * Thread safety is guaranteed.
      *

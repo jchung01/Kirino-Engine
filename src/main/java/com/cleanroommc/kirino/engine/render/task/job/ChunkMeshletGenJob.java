@@ -7,9 +7,11 @@ import com.cleanroommc.kirino.ecs.job.JobDataQuery;
 import com.cleanroommc.kirino.ecs.job.JobExternalDataQuery;
 import com.cleanroommc.kirino.ecs.storage.IPrimitiveArray;
 import com.cleanroommc.kirino.engine.render.geometry.Block;
-import com.cleanroommc.kirino.engine.render.geometry.Meshlet;
+import com.cleanroommc.kirino.engine.render.meshlet.Meshlet;
 import com.cleanroommc.kirino.engine.render.geometry.component.ChunkComponent;
 import com.cleanroommc.kirino.engine.render.gizmos.GizmosManager;
+import com.cleanroommc.kirino.engine.render.minecraft.semantic.BlockRenderingType;
+import com.cleanroommc.kirino.engine.render.minecraft.semantic.BlockUnifier;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import net.minecraft.block.state.IBlockState;
@@ -26,8 +28,12 @@ import java.util.Deque;
 import java.util.List;
 
 public class ChunkMeshletGenJob implements IParallelJob {
-    // todo: pass opaque or transparent
-    public int pass = 0; // 0: opaque, 1: transparent
+    /**
+     * <p><b>0</b>: opaque</p>
+     * <p><b>1</b>: transparent</p>
+     * <p><b>2</b>: cutout</p>
+     */
+    public int pass = 0;
 
     @JobExternalDataQuery
     public ChunkProviderClient chunkProvider;
@@ -45,11 +51,16 @@ public class ChunkMeshletGenJob implements IParallelJob {
     public IPrimitiveArray chunkPosZArray;
 
     @JobDataQuery(componentClass = ChunkComponent.class, fieldAccessChain = {"isDirty"})
-    public IPrimitiveArray isChunkDirty;
+    public IPrimitiveArray isDirtyArray;
 
     @Override
     public void query(@NonNull EntityQuery entityQuery) {
         entityQuery.with(ChunkComponent.class);
+    }
+
+    @Override
+    public int estimateWorkload(int index) {
+        return 4096 * 2;
     }
 
     record ChunkCluster(
@@ -80,11 +91,11 @@ public class ChunkMeshletGenJob implements IParallelJob {
     final static int MESHLET_MAX_SIZE = 32;
 
     @Override
-    public void execute(@NonNull EntityManager entityManager, int index) {
-        Preconditions.checkState(pass == 0 || pass == 1,
-                "Invalid pass number %d. Must be either 0 or 1.", pass);
+    public void execute(@NonNull EntityManager entityManager, int index, int threadOrdinal) {
+        Preconditions.checkState(pass == 0 || pass == 1 || pass == 2,
+                "Invalid pass number %d. Must be either 0 or 1 or 2.", pass);
 
-        if (!isChunkDirty.getBool(index)) {
+        if (!isDirtyArray.getBool(index)) {
             return;
         }
 
@@ -173,9 +184,11 @@ public class ChunkMeshletGenJob implements IParallelJob {
         }
 
         if (pass == 0) {
-            return result.isOpaqueCube();
+            return BlockUnifier.getBlockRenderingType(result) == BlockRenderingType.OPAQUE;
         } else if (pass == 1) {
-            return result.isTranslucent();
+            return BlockUnifier.getBlockRenderingType(result) == BlockRenderingType.TRANSPARENT;
+        } else if (pass == 2) {
+            return BlockUnifier.getBlockRenderingType(result) == BlockRenderingType.CUTOUT;
         }
 
         return false; // impossible

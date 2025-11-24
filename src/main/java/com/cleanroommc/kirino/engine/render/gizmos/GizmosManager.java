@@ -2,7 +2,7 @@ package com.cleanroommc.kirino.engine.render.gizmos;
 
 import com.cleanroommc.kirino.KirinoCore;
 import com.cleanroommc.kirino.engine.render.geometry.Block;
-import com.cleanroommc.kirino.engine.render.geometry.Meshlet;
+import com.cleanroommc.kirino.engine.render.meshlet.Meshlet;
 import com.cleanroommc.kirino.engine.render.pipeline.draw.cmd.HighLevelDC;
 import com.cleanroommc.kirino.engine.render.resource.GraphicResourceManager;
 import com.cleanroommc.kirino.engine.render.resource.UploadStrategy;

@@ -10,7 +10,11 @@ public class MeshletComponent implements ICleanComponent {
     // todo
     public AABB aabb;
     public Vector3f normal;
-    public boolean transparent;
-    public int meshletID;
-    public int generation;
+    public int pass;
+    public boolean isDirty;
+    public int chunkPosX;
+    public int chunkPosY;
+    public int chunkPosZ;
+    public int handleID;
+    public int handleGeneration;
 }

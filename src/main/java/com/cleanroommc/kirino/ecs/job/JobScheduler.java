@@ -1,5 +1,6 @@
 package com.cleanroommc.kirino.ecs.job;
 
+import com.cleanroommc.kirino.KirinoCore;
 import com.cleanroommc.kirino.ecs.component.ICleanComponent;
 import com.cleanroommc.kirino.ecs.entity.EntityManager;
 import com.cleanroommc.kirino.ecs.entity.EntityQuery;
@@ -22,7 +23,7 @@ public class JobScheduler {
         this.jobRegistry = jobRegistry;
     }
 
-    public void executeParallel(EntityManager entityManager, Class<? extends IParallelJob> clazz, @Nullable Map<String, Object> externalData, Executor executor) {
+    public CompletableFuture<?> executeParallelJob(EntityManager entityManager, Class<? extends IParallelJob> clazz, @Nullable Map<String, Object> externalData, Executor executor) {
         Map<JobDataQuery, IJobDataInjector> parallelJobDataQueries = jobRegistry.getParallelJobDataQueries(clazz);
         Map<String, IJobDataInjector> parallelJobExternalDataQueries = jobRegistry.getParallelJobExternalDataQueries(clazz);
         IJobInstantiator instantiator = jobRegistry.getParallelJobInstantiator(clazz);
@@ -33,7 +34,6 @@ public class JobScheduler {
         if (!parallelJobExternalDataQueries.isEmpty()) {
             Preconditions.checkArgument(externalData != null,
                     "Argument \"externalData\" must not be null since there are %d external data queries.", parallelJobExternalDataQueries.size());
-
             for (String key : parallelJobExternalDataQueries.keySet()) {
                 Preconditions.checkArgument(externalData.containsKey(key),
                         "Missing the entry \"%s\" from \"externalData\".", key);
@@ -46,6 +46,7 @@ public class JobScheduler {
 
         List<CompletableFuture<?>> futures = new ArrayList<>();
 
+        int threadOrdinal = 0;
         for (ArchetypeDataPool archetype : archetypes) {
             IParallelJob job = (IParallelJob) instantiator.instantiate();
 
@@ -62,25 +63,93 @@ public class JobScheduler {
 
             ArrayRange arrayRange = archetype.getArrayRange();
 
-            // todo: configurable & dynamic
-            int futureCount = 16;
-            int step = (arrayRange.end - arrayRange.start) / futureCount;
+            int workload = 0;
+            for (int i = arrayRange.start; i < arrayRange.end; i++) {
+                if (arrayRange.deprecatedIndexes.contains(i)) {
+                    continue;
+                }
 
-            for (int i = 0; i < futureCount; i++) {
-                int finalI = i;
-                futures.add(CompletableFuture.runAsync(() -> {
-                    int start = arrayRange.start + finalI * step;
-                    int end = (finalI == futureCount - 1) ? arrayRange.end : arrayRange.start + (finalI + 1) * step;
-                    for (int j = start; j < end; j++) {
-                        if (arrayRange.deprecatedIndexes.contains(j)) {
-                            continue;
-                        }
-                        job.execute(entityManager, j);
+                workload += job.estimateWorkload(i);
+            }
+
+            int futureCount = (workload + KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread - 1) / KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread;
+
+            if (futureCount <= 1) {
+                // run synchronously
+                for (int i = arrayRange.start; i < arrayRange.end; i++) {
+                    if (arrayRange.deprecatedIndexes.contains(i)) {
+                        continue;
                     }
-                }, executor));
+
+                    job.execute(entityManager, i, threadOrdinal);
+                }
+                threadOrdinal++;
+            } else {
+                // run asynchronously
+                int accumulated = 0;
+                int startIndex = arrayRange.start;
+
+                for (int i = arrayRange.start; i < arrayRange.end; i++) {
+                    if (arrayRange.deprecatedIndexes.contains(i)) {
+                        continue;
+                    }
+
+                    accumulated += job.estimateWorkload(i);
+
+                    if (accumulated >= KirinoCore.KIRINO_CONFIG_HUB.targetWorkloadPerThread) {
+                        final int endIndexExclusive = i + 1;
+                        final int finalThreadOrdinal = threadOrdinal;
+                        final int finalStartIndex = startIndex;
+
+                        futures.add(CompletableFuture.runAsync(() -> {
+                            for (int j = finalStartIndex; j < endIndexExclusive; j++) {
+                                if (arrayRange.deprecatedIndexes.contains(j)) {
+                                    continue;
+                                }
+
+                                job.execute(entityManager, j, finalThreadOrdinal);
+                            }
+                        }, executor));
+
+                        threadOrdinal++;
+                        startIndex = endIndexExclusive;
+                        accumulated = 0;
+                    }
+                }
+
+                boolean hasRemainingWork = false;
+                for (int j = startIndex; j < arrayRange.end; j++) {
+                    if (!arrayRange.deprecatedIndexes.contains(j)) {
+                        hasRemainingWork = true;
+                        break;
+                    }
+                }
+
+                if (hasRemainingWork) {
+                    final int finalThreadOrdinal = threadOrdinal;
+                    final int finalStartIndex = startIndex;
+
+                    futures.add(CompletableFuture.runAsync(() -> {
+                        for (int j = finalStartIndex; j < arrayRange.end; j++) {
+                            if (arrayRange.deprecatedIndexes.contains(j)) {
+                                continue;
+                            }
+
+                            job.execute(entityManager, j, finalThreadOrdinal);
+                        }
+                    }, executor));
+
+                    threadOrdinal++;
+                }
             }
         }
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        if (futures.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        } else if (futures.size() == 1) {
+            return futures.getFirst();
+        } else {
+            return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        }
     }
 }

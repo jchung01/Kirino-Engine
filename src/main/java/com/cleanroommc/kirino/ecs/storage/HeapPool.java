@@ -263,7 +263,7 @@ public final class HeapPool extends ArchetypeDataPool{
 
     @Override
     public ArrayRange getArrayRange() {
-        return new ArrayRange(0, indexCounter, freeIndexes);
+        return new ArrayRange(0, indexCounter, new HashSet<>(freeIndexes));
     }
 
     @Override

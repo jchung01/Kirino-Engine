@@ -8,6 +8,7 @@ import com.cleanroommc.kirino.engine.KirinoEngine;
 import com.cleanroommc.kirino.engine.render.pipeline.post.event.PostProcessingRegistrationEvent;
 import com.cleanroommc.kirino.engine.render.shader.event.ShaderRegistrationEvent;
 import com.cleanroommc.kirino.engine.render.task.job.ChunkMeshletGenJob;
+import com.cleanroommc.kirino.engine.render.task.job.ChunkPrioritizationJob;
 import com.cleanroommc.kirino.gl.GLTest;
 import com.cleanroommc.kirino.gl.debug.*;
 import com.cleanroommc.kirino.utils.ReflectionUtils;
@@ -45,14 +46,14 @@ public final class KirinoCore {
     private static final Minecraft MINECRAFT = Minecraft.getMinecraft();
     public static final Logger LOGGER = LogManager.getLogger("Kirino Core");
     public static final EventBus KIRINO_EVENT_BUS = new EventBus();
-    public static final KirinoConfig KIRINO_CONFIG = new KirinoConfig();
+    public static final KirinoConfigHub KIRINO_CONFIG_HUB = new KirinoConfigHub();
     private static CleanECSRuntime ECS_RUNTIME;
     private static KirinoEngine KIRINO_ENGINE;
     private static boolean UNSUPPORTED = false;
     private static boolean FULLY_INITIALIZED = false;
 
     public static boolean isEnableRenderDelegate() {
-        return KIRINO_CONFIG.enableRenderDelegate && !UNSUPPORTED;
+        return KIRINO_CONFIG_HUB.enableRenderDelegate && !UNSUPPORTED;
     }
 
     //<editor-fold desc="hooks">
@@ -379,8 +380,8 @@ public final class KirinoCore {
     }
 
     public static void init() {
-        if (!KIRINO_CONFIG.enable) {
-            KIRINO_CONFIG.enableRenderDelegate = false;
+        if (!KIRINO_CONFIG_HUB.enable) {
+            KIRINO_CONFIG_HUB.enableRenderDelegate = false;
             return;
         }
 
@@ -408,16 +409,16 @@ public final class KirinoCore {
 
         if (rawGLVersion.isEmpty() || majorGLVersion == -1 || minorGLVersion == -1) {
             UNSUPPORTED = true;
-            KIRINO_CONFIG.enable = false;
-            KIRINO_CONFIG.enableRenderDelegate = false;
+            KIRINO_CONFIG_HUB.enable = false;
+            KIRINO_CONFIG_HUB.enableRenderDelegate = false;
             LOGGER.warn("Failed to parse the OpenGL version. Aborting Kirino initialization.");
             return;
         }
 
         if (!(majorGLVersion == 4 && minorGLVersion == 6)) {
             UNSUPPORTED = true;
-            KIRINO_CONFIG.enable = false;
-            KIRINO_CONFIG.enableRenderDelegate = false;
+            KIRINO_CONFIG_HUB.enable = false;
+            KIRINO_CONFIG_HUB.enableRenderDelegate = false;
             LOGGER.warn("OpenGL 4.6 not supported. Aborting Kirino initialization.");
             return;
         }
@@ -491,7 +492,7 @@ public final class KirinoCore {
                     boolean.class);
             Preconditions.checkNotNull(ctor);
 
-            KIRINO_ENGINE = (KirinoEngine) ctor.invokeExact(KIRINO_EVENT_BUS, LOGGER, ECS_RUNTIME, KIRINO_CONFIG.enableHDR, KIRINO_CONFIG.enablePostProcessing);
+            KIRINO_ENGINE = (KirinoEngine) ctor.invokeExact(KIRINO_EVENT_BUS, LOGGER, ECS_RUNTIME, KIRINO_CONFIG_HUB.enableHDR, KIRINO_CONFIG_HUB.enablePostProcessing);
         } catch (Throwable throwable) {
             throw new RuntimeException("Kirino Engine failed to initialize.", throwable);
         }
@@ -503,7 +504,7 @@ public final class KirinoCore {
     }
 
     public static void postInit() {
-        if (!KIRINO_CONFIG.enable) {
+        if (!KIRINO_CONFIG_HUB.enable) {
             return;
         }
 
@@ -537,6 +538,7 @@ public final class KirinoCore {
     @SubscribeEvent
     public static void onJobRegister(JobRegistrationEvent event) {
         event.register(ChunkMeshletGenJob.class);
+        event.register(ChunkPrioritizationJob.class);
     }
 
     @SubscribeEvent

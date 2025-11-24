@@ -22,8 +22,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * <code>StagingBufferManager</code> is where we upload data to GPU. {@link #runStaging(IStagingCallback)} to be exact.
+ * <code>StagingBufferManager</code> guarantees that it uploads to memory slices where GPU is no longer reading by introducing a window period (instead of a ring buffer).
+ * To illustrate, clients are only allowed to access <code>StagingBufferManager</code> and upload data during {@link #runStaging(IStagingCallback)}.
+ */
 public class StagingBufferManager {
-    // todo: ring buffer double/triple/n buffering & non-coherent persistent buffer with manual flush
+    // dropped. todo: ring buffer double/triple/n buffering & non-coherent persistent buffer with manual flush
     private final Map<String, Triple<Integer, VBOView, ByteBuffer>> persistentVbos = new HashMap<>();
     private final Map<String, Triple<Integer, EBOView, ByteBuffer>> persistentEbos = new HashMap<>();
 
@@ -76,7 +81,7 @@ public class StagingBufferManager {
     }
     //</editor-fold>
 
-    // todo
+    // dropped. todo
     public void flushPersistent() {
         //GL30.glFlushMappedBufferRange();
     }
@@ -87,7 +92,7 @@ public class StagingBufferManager {
         VBOView vboView = new VBOView(new GLBuffer());
         EBOView eboView = new EBOView(new GLBuffer());
 
-        // todo: x2 to do double buffering
+        // dropped. todo: x2 to do double buffering
         vboView.bind();
         vboView.allocPersistent(vboSize * 2, MapBufferAccessBit.WRITE_BIT, MapBufferAccessBit.MAP_PERSISTENT_BIT, MapBufferAccessBit.MAP_COHERENT_BIT); // explicit flush bit is invalid???
         vboView.mapPersistent(0, vboSize * 2, MapBufferAccessBit.WRITE_BIT, MapBufferAccessBit.MAP_PERSISTENT_BIT, MapBufferAccessBit.MAP_COHERENT_BIT);

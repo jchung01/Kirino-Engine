@@ -2,17 +2,21 @@ package com.cleanroommc.kirino.engine.render.scene;
 
 import com.cleanroommc.kirino.KirinoCore;
 import com.cleanroommc.kirino.ecs.entity.CleanEntityHandle;
+import com.cleanroommc.kirino.ecs.entity.EntityDestroyContext;
 import com.cleanroommc.kirino.ecs.entity.EntityManager;
+import com.cleanroommc.kirino.ecs.entity.IEntityDestroyCallback;
 import com.cleanroommc.kirino.ecs.job.JobScheduler;
 import com.cleanroommc.kirino.ecs.world.CleanWorld;
 import com.cleanroommc.kirino.engine.render.camera.MinecraftCamera;
 import com.cleanroommc.kirino.engine.render.geometry.component.ChunkComponent;
 import com.cleanroommc.kirino.engine.render.gizmos.GizmosManager;
 import com.cleanroommc.kirino.engine.render.task.system.ChunkMeshletGenSystem;
+import com.cleanroommc.kirino.engine.render.task.system.ChunkPrioritizationSystem;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.multiplayer.ChunkProviderClient;
 import net.minecraft.util.math.ChunkPos;
 import org.apache.commons.lang3.time.StopWatch;
+import org.jspecify.annotations.NonNull;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,13 +32,20 @@ public class MinecraftScene extends CleanWorld {
         this.camera = camera;
     }
 
+    static class ChunkDestroyCallback implements IEntityDestroyCallback {
+        @Override
+        public void beforeDestroy(@NonNull EntityDestroyContext destroyContext) {
+            ChunkComponent chunkComponent = (ChunkComponent) destroyContext.getComponent(ChunkComponent.class);
+            //KirinoCore.LOGGER.info("chunk destroyed: " + chunkComponent.chunkPosX + ", " + chunkComponent.chunkPosY + ", " + chunkComponent.chunkPosZ);
+        }
+    }
+
     record ChunkPosKey(int x, int y, int z) {
     }
 
     private final Map<ChunkPosKey, CleanEntityHandle> chunkHandles = new HashMap<>();
 
-    private static final ChunkComponent CHUNK_COMPONENT_0 = new ChunkComponent();
-    private static final ChunkComponent CHUNK_COMPONENT_1 = new ChunkComponent();
+    private static final ChunkDestroyCallback CHUNK_DESTROY_CALLBACK = new ChunkDestroyCallback();
 
     private boolean rebuildWorld = false;
     private ChunkProviderClient chunkProvider = null;
@@ -45,10 +56,11 @@ public class MinecraftScene extends CleanWorld {
             this.chunkProvider = chunkProvider;
             this.chunkProvider.loadChunkCallback = (x, z) -> {
                 for (int i = 0; i < 16; i++) {
-                    CHUNK_COMPONENT_0.chunkPosX = x;
-                    CHUNK_COMPONENT_0.chunkPosY = i;
-                    CHUNK_COMPONENT_0.chunkPosZ = z;
-                    chunkHandles.put(new ChunkPosKey(x, i, z), entityManager.createEntity(CHUNK_COMPONENT_0));
+                    ChunkComponent chunkComponent = new ChunkComponent();
+                    chunkComponent.chunkPosX = x;
+                    chunkComponent.chunkPosY = i;
+                    chunkComponent.chunkPosZ = z;
+                    chunkHandles.put(new ChunkPosKey(x, i, z), entityManager.createEntity(CHUNK_DESTROY_CALLBACK, chunkComponent));
                 }
             };
             this.chunkProvider.unloadChunkCallback = (x, z) -> {
@@ -61,7 +73,7 @@ public class MinecraftScene extends CleanWorld {
                     }
                 }
             };
-            // no need to & must not flush immediately
+            // all changes are buffered and will be consumed at the end of this update
         }
     }
 
@@ -81,26 +93,35 @@ public class MinecraftScene extends CleanWorld {
             chunkHandles.clear();
             for (Long chunkKey : chunkProvider.getLoadedChunks().keySet()) {
                 for (int i = 0; i < 16; i++) {
-                    CHUNK_COMPONENT_1.chunkPosX = ChunkPos.getX(chunkKey);
-                    CHUNK_COMPONENT_1.chunkPosY = i;
-                    CHUNK_COMPONENT_1.chunkPosZ = ChunkPos.getZ(chunkKey);
-                    chunkHandles.put(new ChunkPosKey(CHUNK_COMPONENT_1.chunkPosX, CHUNK_COMPONENT_1.chunkPosY, CHUNK_COMPONENT_1.chunkPosZ), entityManager.createEntity(CHUNK_COMPONENT_1));
+                    ChunkComponent chunkComponent = new ChunkComponent();
+                    chunkComponent.chunkPosX = ChunkPos.getX(chunkKey);
+                    chunkComponent.chunkPosY = i;
+                    chunkComponent.chunkPosZ = ChunkPos.getZ(chunkKey);
+                    chunkHandles.put(new ChunkPosKey(chunkComponent.chunkPosX, chunkComponent.chunkPosY, chunkComponent.chunkPosZ), entityManager.createEntity(CHUNK_DESTROY_CALLBACK, chunkComponent));
                 }
             }
-            // no need to & must not flush immediately
+            // all changes are buffered and will be consumed at the end of this update
         }
 
-        // test
-        if (c == 3) {
-            StopWatch stopWatch = StopWatch.createStarted();
+//        if (true) {
+//            StopWatch stopWatch = StopWatch.createStarted();
+//
+//            (new ChunkPrioritizationSystem(camera)).update(entityManager, jobScheduler);
+//
+//            stopWatch.stop();
+//            KirinoCore.LOGGER.info("executed!!! " + stopWatch.getTime(TimeUnit.MILLISECONDS) + " ms");
+//        }
 
-            (new ChunkMeshletGenSystem(chunkProvider, gizmosManager)).update(entityManager, jobScheduler);
-
-            stopWatch.stop();
-            KirinoCore.LOGGER.info("executed!!! " + stopWatch.getTime(TimeUnit.MILLISECONDS) + " ms");
-            entityManager.abort();
-        }
-        c++;
+//        // test
+//        if (c == 3) {
+//            StopWatch stopWatch = StopWatch.createStarted();
+//
+//            (new ChunkMeshletGenSystem(chunkProvider, gizmosManager)).update(entityManager, jobScheduler);
+//
+//            stopWatch.stop();
+//            KirinoCore.LOGGER.info("executed!!! " + stopWatch.getTime(TimeUnit.MILLISECONDS) + " ms");
+//        }
+//        c++;
 
         super.update();
     }

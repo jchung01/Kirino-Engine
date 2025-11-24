@@ -1,4 +1,6 @@
-package com.cleanroommc.kirino.engine.render.geometry;
+package com.cleanroommc.kirino.engine.render.meshlet;
+
+import com.cleanroommc.kirino.engine.render.geometry.Block;
 
 import java.util.List;
 
