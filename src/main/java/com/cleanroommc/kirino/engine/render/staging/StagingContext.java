@@ -6,12 +6,12 @@ import com.cleanroommc.kirino.gl.vao.attribute.AttributeLayout;
 public class StagingContext {
     protected StagingBufferManager manager;
 
-    public PersistentVBOHandle getPersistentVBO(String key, int offset, int size) {
-        return manager.getPersistentVBOHandle(key, offset, size);
+    public PersistentVBOHandle getPersistentVBO(AttributeLayout key, int size) {
+        return manager.getPersistentVBOHandle(key, size);
     }
 
-    public PersistentEBOHandle getPersistentEBO(String key, int offset, int size) {
-        return manager.getPersistentEBOHandle(key, offset, size);
+    public PersistentEBOHandle getPersistentEBO(AttributeLayout key, int size) {
+        return manager.getPersistentEBOHandle(key, size);
     }
 
     public TemporaryVAOHandle getTemporaryVAO(AttributeLayout attributeLayout, TemporaryEBOHandle eboHandle, TemporaryVBOHandle... vboHandles) {

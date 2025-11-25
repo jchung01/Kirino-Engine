@@ -127,8 +127,6 @@ public class RenderingCoordinator {
         camera = new MinecraftCamera();
         scene = new MinecraftScene(ecsRuntime.entityManager, ecsRuntime.jobScheduler, gizmosManager, camera);
 
-//        stagingBufferManager.genPersistentBuffers("default", 256, 256);
-
         ShaderProgram shaderProgram = shaderRegistry.newShaderProgram("forge:shaders/gizmos.vert", "forge:shaders/gizmos.frag");
 
         Renderer renderer = new Renderer();
@@ -298,6 +296,10 @@ public class RenderingCoordinator {
 
         VAO fullscreenTriangleVao = new VAO(fullscreenTriangleLayout, eboView, vboView);
         this.fullscreenTriangleVao.set(fullscreenTriangleVao);
+        //</editor-fold>
+
+        //<editor-fold desc="staging buffer initialization">
+        stagingBufferManager.genPersistentBuffers(GizmosManager.ATTRIBUTE_LAYOUT);
         //</editor-fold>
     }
 

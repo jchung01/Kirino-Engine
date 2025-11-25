@@ -50,7 +50,7 @@ public class IndirectDrawBufferGenerator {
         int idbBufferSize = units.size() * IDB_STRIDE_BYTE;
 
         Preconditions.checkArgument(offset + idbBufferSize <= bufferSize,
-                "Too many commands (%d) being passed, resulting in overflow. Current offset: %d; Input size: %d; Buffer size: %d.", units.size(), offset, idbBufferSize, bufferSize);
+                "Too many commands (%s) being passed, resulting in overflow. Current offset: %s; Input size: %s; Buffer size: %s.", units.size(), offset, idbBufferSize, bufferSize);
 
         if (idbBufferSize < MEMORY_STACK_LIMIT_BYTE) {
             try (MemoryStack stack = MemoryStack.stackPush()) {

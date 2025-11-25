@@ -36,7 +36,7 @@ public class ChunkMeshletGenJob implements IParallelJob {
     public int pass = 0;
 
     @JobExternalDataQuery
-    public Integer priority;
+    public int priority;
 
     @JobExternalDataQuery
     public ChunkProviderClient chunkProvider;

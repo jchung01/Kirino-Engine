@@ -1,6 +1,5 @@
 package com.cleanroommc.kirino.engine.render.gizmos;
 
-import com.cleanroommc.kirino.KirinoCore;
 import com.cleanroommc.kirino.engine.render.geometry.Block;
 import com.cleanroommc.kirino.engine.render.meshlet.Meshlet;
 import com.cleanroommc.kirino.engine.render.pipeline.draw.cmd.HighLevelDC;
@@ -40,7 +39,7 @@ public class GizmosManager {
 //        if (blockSurfaces.size() > 3000) {
 //            return;
 //        }
-        KirinoCore.LOGGER.info("Added a meshlet (" + meshlet.blocks.size() + " blocks). current meshlet count: " + counter.addAndGet(1) + ", current block count: " + blockSurfaces.size());
+//        KirinoCore.LOGGER.info("Added a meshlet (" + meshlet.blocks.size() + " blocks). current meshlet count: " + counter.addAndGet(1) + ", current block count: " + blockSurfaces.size());
 
         Random random = new Random();
         Color color = new Color(random.nextFloat(), random.nextFloat(), random.nextFloat(), 0.5f);
@@ -80,7 +79,7 @@ public class GizmosManager {
         this.graphicResourceManager = graphicResourceManager;
     }
 
-    private final static AttributeLayout ATTRIBUTE_LAYOUT;
+    public final static AttributeLayout ATTRIBUTE_LAYOUT;
 
     static {
         ATTRIBUTE_LAYOUT = new AttributeLayout();

@@ -5,7 +5,7 @@ import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
 
 /**
- * This is a handle for a buffer slice.
+ * This is a handle of a buffer slice.
  */
 public abstract class StagingBufferHandle<T extends StagingBufferHandle<T>> {
     protected final StagingBufferManager stagingBufferManager;

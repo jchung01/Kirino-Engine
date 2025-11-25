@@ -2,16 +2,18 @@ package com.cleanroommc.kirino.engine.render.staging.handle;
 
 import com.cleanroommc.kirino.engine.render.staging.StagingBufferHandle;
 import com.cleanroommc.kirino.engine.render.staging.StagingBufferManager;
+import com.cleanroommc.kirino.engine.render.staging.buffer.BufferStorage;
+import com.cleanroommc.kirino.gl.buffer.view.EBOView;
 import com.google.common.base.Preconditions;
 
 import java.nio.ByteBuffer;
 
 public class PersistentEBOHandle extends StagingBufferHandle<PersistentEBOHandle> {
-    private final ByteBuffer byteBuffer;
+    private final BufferStorage.SlotHandle<EBOView> handle;
 
-    public PersistentEBOHandle(StagingBufferManager stagingBufferManager, int offset, int maxLength, ByteBuffer byteBuffer) {
+    public PersistentEBOHandle(StagingBufferManager stagingBufferManager, int offset, int maxLength, BufferStorage.SlotHandle<EBOView> handle) {
         super(stagingBufferManager, offset, maxLength);
-        this.byteBuffer = byteBuffer;
+        this.handle = handle;
     }
 
     @Override
@@ -20,9 +22,10 @@ public class PersistentEBOHandle extends StagingBufferHandle<PersistentEBOHandle
         Preconditions.checkArgument(offset + byteBuffer.remaining() <= maxLength,
                 "Buffer slice size must be greater than or equal to \"offset + byteBuffer.remaining()\".");
 
-        int oldPos = this.byteBuffer.position();
-        this.byteBuffer.position(this.offset + offset);
-        this.byteBuffer.put(byteBuffer);
-        this.byteBuffer.position(oldPos);
+        ByteBuffer byteBuffer0 = handle.getView().getPersistentMappedBuffer();
+        int oldPos = byteBuffer0.position();
+        byteBuffer0.position(this.offset + offset);
+        byteBuffer0.put(byteBuffer);
+        byteBuffer0.position(oldPos);
     }
 }
