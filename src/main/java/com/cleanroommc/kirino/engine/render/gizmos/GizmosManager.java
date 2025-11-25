@@ -1,5 +1,6 @@
 package com.cleanroommc.kirino.engine.render.gizmos;
 
+import com.cleanroommc.kirino.KirinoCore;
 import com.cleanroommc.kirino.engine.render.geometry.Block;
 import com.cleanroommc.kirino.engine.render.meshlet.Meshlet;
 import com.cleanroommc.kirino.engine.render.pipeline.draw.cmd.HighLevelDC;
@@ -11,8 +12,8 @@ import com.cleanroommc.kirino.gl.vao.attribute.Slot;
 import com.cleanroommc.kirino.gl.vao.attribute.Stride;
 import com.cleanroommc.kirino.gl.vao.attribute.Type;
 import com.google.common.base.Preconditions;
-import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.system.MemoryUtil;
 
 import java.awt.*;
 import java.nio.ByteBuffer;
@@ -71,10 +72,6 @@ public class GizmosManager {
         blockSurfaces.add(new BlockSurface(x, y, z, faceMask, color));
     }
 
-    public void clearBlockSurfaces() {
-        blockSurfaces.clear();
-    }
-
     public GizmosManager(GraphicResourceManager graphicResourceManager) {
         this.graphicResourceManager = graphicResourceManager;
     }
@@ -105,8 +102,8 @@ public class GizmosManager {
         byte b;
         Color color1 = new Color(color, true);
 
-        ByteBuffer vboData = BufferUtils.createByteBuffer(faceCount * 4 * ATTRIBUTE_LAYOUT.getFirstStride().getSize());
-        ByteBuffer eboData = BufferUtils.createByteBuffer(faceCount * 6);
+        ByteBuffer vboData = MemoryUtil.memAlloc(faceCount * 4 * ATTRIBUTE_LAYOUT.getFirstStride().getSize());
+        ByteBuffer eboData = MemoryUtil.memAlloc(faceCount * 6);
 
         int vertexBase = 0;
 
@@ -232,23 +229,41 @@ public class GizmosManager {
         vboData.flip();
         eboData.flip();
 
-        builder.build(vboData, eboData, ATTRIBUTE_LAYOUT);
+        builder.build(vboData, eboData, ATTRIBUTE_LAYOUT, true, true);
     }
+
+    private int uploadBatchCounter = 0;
 
     public List<HighLevelDC> getDrawCommands() {
         List<HighLevelDC> list = new ArrayList<>();
 
-        Iterator<BlockSurface> iterator = blockSurfaces.iterator();
-        int index = 0;
+        int total = blockSurfaces.size();
+        if (total == 0) {
+            return list;
+        }
 
-        while (iterator.hasNext()) {
-            BlockSurface blockSurface = iterator.next();
+        int batchCount = Math.min(10, total / 100);
+        int batchSize = Math.ceilDivExact(total, batchCount);
+
+        if (uploadBatchCounter >= batchCount) {
+            uploadBatchCounter = 0;
+        }
+
+        int startIndex = uploadBatchCounter * batchSize;
+        int endIndex = Math.min(startIndex + batchSize, total);
+
+        uploadBatchCounter++;
+
+        int index = 0;
+        for (BlockSurface blockSurface : blockSurfaces) {
             String id = "block_surface_mesh_" + Objects.hash(index, blockSurface);
 
-            graphicResourceManager.requestMeshTicket(id, UploadStrategy.PERSISTENT).ifPresent(builder -> {
-                buildBlockFaces(builder, blockSurface.x, blockSurface.y, blockSurface.z, blockSurface.faceMask, blockSurface.color);
-                graphicResourceManager.submitMeshTicket(builder);
-            });
+            if (index >= startIndex && index < endIndex) {
+                graphicResourceManager.requestMeshTicket(id, UploadStrategy.PERSISTENT, 20).ifPresent(builder -> {
+                    buildBlockFaces(builder, blockSurface.x, blockSurface.y, blockSurface.z, blockSurface.faceMask, blockSurface.color);
+                    graphicResourceManager.submitMeshTicket(builder);
+                });
+            }
 
             list.add(HighLevelDC.passInternal()
                     .meshTicketID(id)
@@ -258,6 +273,8 @@ public class GizmosManager {
 
             index++;
         }
+
+        KirinoCore.LOGGER.info("commands: " + list.size());
 
         return list;
     }

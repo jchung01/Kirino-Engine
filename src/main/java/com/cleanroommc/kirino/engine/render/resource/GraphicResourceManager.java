@@ -29,17 +29,31 @@ public class GraphicResourceManager {
 
     /**
      * If <code>meshID</code> already exists, this request keeps that ticket alive.
-     * Otherwise, a {@link MeshTicketBuilder} will be returned and you need to {@link MeshTicketBuilder#build(ByteBuffer, ByteBuffer, AttributeLayout)} and then {@link #submitMeshTicket(MeshTicketBuilder)}.
+     * Otherwise, a {@link MeshTicketBuilder} will be returned and you need to {@link MeshTicketBuilder#build(ByteBuffer, ByteBuffer, AttributeLayout, boolean, boolean)} and then {@link #submitMeshTicket(MeshTicketBuilder)}.
      *
      * @param meshID The ID of the mesh ticket
+     * @param uploadStrategy The upload strategy
+     * @return An optional mesh ticket builder
+     */
+    public Optional<MeshTicketBuilder> requestMeshTicket(String meshID, UploadStrategy uploadStrategy) {
+        return requestMeshTicket(meshID, uploadStrategy, -1);
+    }
+
+    /**
+     * If <code>meshID</code> already exists, this request keeps that ticket alive.
+     * Otherwise, a {@link MeshTicketBuilder} will be returned and you need to {@link MeshTicketBuilder#build(ByteBuffer, ByteBuffer, AttributeLayout, boolean, boolean)} and then {@link #submitMeshTicket(MeshTicketBuilder)}.
+     *
+     * @param meshID The ID of the mesh ticket
+     * @param uploadStrategy The upload strategy
+     * @param defaultLife The default life of a ticket
      * @return An optional mesh ticket builder
      */
     @SuppressWarnings("unchecked")
-    public Optional<MeshTicketBuilder> requestMeshTicket(String meshID, UploadStrategy uploadStrategy) {
+    public Optional<MeshTicketBuilder> requestMeshTicket(String meshID, UploadStrategy uploadStrategy, int defaultLife) {
         Map<String, GResourceTicket<?, ?>> map = resourceTickets.computeIfAbsent(GResourceType.MESH, k -> new HashMap<>());
         GResourceTicket<MeshPayload, MeshReceipt> ticket = (GResourceTicket<MeshPayload, MeshReceipt>) map.get(meshID);
         if (ticket == null) {
-            return Optional.of(new MeshTicketBuilder(meshID, uploadStrategy));
+            return Optional.of(new MeshTicketBuilder(meshID, uploadStrategy, defaultLife));
         } else {
             ticket.keepAlive();
             return Optional.empty();

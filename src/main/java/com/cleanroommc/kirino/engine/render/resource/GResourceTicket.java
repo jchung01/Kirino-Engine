@@ -20,7 +20,8 @@ public class GResourceTicket<TP extends IResourcePayload<TP>, TR extends IResour
     protected final IResourceReceipt<TR> receipt;
 
     private static final int DEFAULT_LIFE = 2;
-    protected int lifeFrame = DEFAULT_LIFE;
+    protected int defaultLife = DEFAULT_LIFE;
+    protected int lifeFrame = defaultLife;
 
     private @Nullable Runnable expireCallback = null;
 
@@ -63,7 +64,12 @@ public class GResourceTicket<TP extends IResourcePayload<TP>, TR extends IResour
     }
 
     protected final void keepAlive() {
-        lifeFrame = DEFAULT_LIFE;
+        lifeFrame = defaultLife;
+    }
+
+    public final void setDefaultLife(int defaultLife) {
+        this.defaultLife = defaultLife;
+        keepAlive();
     }
 
     public GResourceTicket(@NonNull UploadStrategy uploadStrategy, @NonNull Class<TP> payloadClass, @NonNull Class<TR> receiptClass, @NonNull TP payload, @NonNull TR receipt) {

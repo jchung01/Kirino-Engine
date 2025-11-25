@@ -11,12 +11,14 @@ import java.nio.ByteBuffer;
 public final class MeshTicketBuilder {
     private final String meshID;
     private final UploadStrategy uploadStrategy;
+    private final int defaultLife;
     private GResourceTicket<MeshPayload, MeshReceipt> ticket;
     private boolean built = false;
 
-    public MeshTicketBuilder(String meshID, UploadStrategy uploadStrategy) {
+    public MeshTicketBuilder(String meshID, UploadStrategy uploadStrategy, int defaultLife) {
         this.meshID = meshID;
         this.uploadStrategy = uploadStrategy;
+        this.defaultLife = defaultLife;
     }
 
     public String getMeshID() {
@@ -35,7 +37,7 @@ public final class MeshTicketBuilder {
         return built;
     }
 
-    public void build(ByteBuffer vboByteBuffer, ByteBuffer eboByteBuffer, AttributeLayout attributeLayout) {
+    public void build(ByteBuffer vboByteBuffer, ByteBuffer eboByteBuffer, AttributeLayout attributeLayout, boolean isVboByteBufferFromLwjgl, boolean isEboByteBufferFromLwjgl) {
         if (!built) {
             MeshPayload payload = new MeshPayload();
             MeshReceipt receipt = new MeshReceipt();
@@ -43,8 +45,14 @@ public final class MeshTicketBuilder {
             payload.vboByteBuffer = vboByteBuffer;
             payload.eboByteBuffer = eboByteBuffer;
             payload.attributeLayout = attributeLayout;
+            payload.isVboByteBufferFromLwjgl = isVboByteBufferFromLwjgl;
+            payload.isEboByteBufferFromLwjgl = isEboByteBufferFromLwjgl;
 
             ticket = new GResourceTicket<>(uploadStrategy, MeshPayload.class, MeshReceipt.class, payload, receipt);
+            if (defaultLife >= 1) {
+                ticket.setDefaultLife(defaultLife);
+            }
+
             built = true;
         }
     }
